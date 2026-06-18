@@ -59,7 +59,9 @@ vc-trabalho-2/
 ## 🚀 Instalação e Execução
 
 ### Pré-requisitos
-- **Python 3.9+** (testado em 3.11)
+- **Python 3.10, 3.11 ou 3.12** (testado em 3.11).
+  ⚠️ **Não use Python 3.13/3.14** — o TensorFlow (dependência do DeepFace)
+  ainda não tem suporte a essas versões e a instalação falha.
 - Uma **webcam**
 - Navegador moderno (Chrome, Edge ou Firefox)
 
