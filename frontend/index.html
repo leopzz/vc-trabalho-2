@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chamada por Reconhecimento Facial</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>🎓 Chamada Facial</h1>
+    <nav>
+      <a href="index.html" class="active">Início</a>
+      <a href="cadastro.html">Cadastro</a>
+      <a href="chamada.html">Chamada</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="card hero">
+      <h2>Reconhecimento Facial para Registro de Presença</h2>
+      <p class="muted">
+        Detecção de rostos com <strong>Haarcascade (OpenCV)</strong> e
+        reconhecimento com <strong>DeepFace</strong>. Cadastre os alunos e faça a
+        chamada automaticamente pela webcam.
+      </p>
+      <div class="btn-row">
+        <a href="cadastro.html"><button>Cadastrar Alunos</button></a>
+        <a href="chamada.html"><button class="secondary">Iniciar Chamada</button></a>
+      </div>
+
+      <div class="steps">
+        <div class="card">
+          <div class="num">1</div>
+          <h3>Cadastre</h3>
+          <p class="muted">Suba uma foto ou use a webcam para registrar o rosto de cada aluno.</p>
+        </div>
+        <div class="card">
+          <div class="num">2</div>
+          <h3>Reconheça</h3>
+          <p class="muted">Aponte a câmera para a turma. O sistema detecta e identifica cada rosto.</p>
+        </div>
+        <div class="card">
+          <div class="num">3</div>
+          <h3>Registre</h3>
+          <p class="muted">A presença é marcada automaticamente e a lista de chamada é atualizada.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/common.js"></script>
+</body>
+</html>

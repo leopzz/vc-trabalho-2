@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Dados gerados em runtime (fotos, embeddings, presenças)
+backend/data/
+
+# Modelos baixados pelo DeepFace
+.deepface/
+
+# Sistema operacional / editores
+.DS_Store
+.idea/
+.vscode/
+*.swp

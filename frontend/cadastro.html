@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cadastro de Alunos</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>🎓 Chamada Facial</h1>
+    <nav>
+      <a href="index.html">Início</a>
+      <a href="cadastro.html" class="active">Cadastro</a>
+      <a href="chamada.html">Chamada</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="grid-2">
+      <!-- Formulário de cadastro -->
+      <div class="card">
+        <h2>Cadastrar aluno</h2>
+        <p class="muted">Informe o nome e escolha uma foto (upload) ou capture pela webcam.</p>
+
+        <label for="name">Nome do aluno</label>
+        <input type="text" id="name" placeholder="Ex.: Maria Silva" />
+
+        <label for="file">Foto (upload)</label>
+        <input type="file" id="file" accept="image/*" />
+
+        <div class="btn-row">
+          <button id="toggleCam" class="secondary" type="button">📷 Usar webcam</button>
+        </div>
+
+        <!-- Bloco da webcam (oculto até ativar) -->
+        <div id="camBlock" style="display:none;">
+          <div class="video-wrap" style="margin-top:14px;">
+            <video id="video" autoplay playsinline muted></video>
+          </div>
+          <div class="btn-row">
+            <button id="snap" type="button">Capturar foto</button>
+          </div>
+        </div>
+
+        <img id="preview" class="preview" style="display:none;" alt="Pré-visualização" />
+
+        <div class="btn-row">
+          <button id="save" type="button">Salvar cadastro</button>
+        </div>
+      </div>
+
+      <!-- Lista de alunos cadastrados -->
+      <div class="card">
+        <h2>Alunos cadastrados (<span id="count">0</span>)</h2>
+        <p class="muted">Estes alunos serão considerados na chamada.</p>
+        <div id="list" class="student-list"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/common.js"></script>
+  <script src="js/cadastro.js"></script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chamada Automática</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>🎓 Chamada Facial</h1>
+    <nav>
+      <a href="index.html">Início</a>
+      <a href="cadastro.html">Cadastro</a>
+      <a href="chamada.html" class="active">Chamada</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="grid-2">
+      <!-- Câmera + detecção -->
+      <div class="card">
+        <h2>Reconhecimento ao vivo</h2>
+        <div class="video-wrap">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
+        </div>
+        <div class="btn-row">
+          <button id="start" type="button">▶ Iniciar câmera</button>
+          <button id="auto" class="secondary" type="button" disabled>⏱ Chamada automática</button>
+          <button id="snap" class="secondary" type="button" disabled>📸 Reconhecer agora</button>
+        </div>
+        <p class="muted" style="margin-top:12px;">
+          <span id="dot" class="status-dot"></span>
+          <span id="statusText">Câmera desligada.</span>
+        </p>
+      </div>
+
+      <!-- Lista de chamada -->
+      <div class="card">
+        <h2>Lista de chamada — <span id="date"></span></h2>
+        <div class="stats">
+          <div><span id="presentCount">0</span><small>Presentes</small></div>
+          <div><span id="totalCount">0</span><small>Total de alunos</small></div>
+        </div>
+        <div class="btn-row">
+          <button id="reset" class="danger" type="button">Zerar chamada de hoje</button>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Aluno</th><th>Situação</th><th>Horário</th></tr>
+          </thead>
+          <tbody id="attendanceBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/common.js"></script>
+  <script src="js/chamada.js"></script>
+</body>
+</html>
