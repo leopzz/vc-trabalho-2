@@ -39,6 +39,12 @@ HAAR_SCALE_FACTOR = 1.1
 HAAR_MIN_NEIGHBORS = 6
 HAAR_MIN_SIZE = (60, 60)
 
+# Cadastro: número mínimo de fotos válidas (rosto detectado) exigido para
+# concluir o cadastro de um aluno. O wizard captura ~10 fotos em poses
+# diferentes; algumas podem falhar na detecção e tudo bem.
+MIN_VALID_CAPTURES = 4
+
+
 
 def ensure_dirs() -> None:
     """Garante que os diretórios de dados existam."""

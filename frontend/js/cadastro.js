@@ -1,121 +1,263 @@
-// Lógica da tela de cadastro de alunos.
+// Wizard de cadastro: Dados -> Captura guiada -> Revisão.
 
-const nameInput = document.getElementById("name");
-const fileInput = document.getElementById("file");
-const preview = document.getElementById("preview");
-const toggleCamBtn = document.getElementById("toggleCam");
-const camBlock = document.getElementById("camBlock");
-const video = document.getElementById("video");
-const snapBtn = document.getElementById("snap");
-const saveBtn = document.getElementById("save");
-const listEl = document.getElementById("list");
-const countEl = document.getElementById("count");
+// Roteiro de poses (10 fotos): frente + laterais + inclinações.
+// `require: true` => espera o rosto estar bem posicionado antes de capturar.
+const POSES = [
+  { text: "Olhe para a câmera", require: true },
+  { text: "Olhe para a câmera", require: true },
+  { text: "Olhe para a câmera", require: true },
+  { text: "Vire o rosto levemente para a sua ESQUERDA", require: false },
+  { text: "Vire o rosto levemente para a sua ESQUERDA", require: false },
+  { text: "Vire o rosto levemente para a sua DIREITA", require: false },
+  { text: "Vire o rosto levemente para a sua DIREITA", require: false },
+  { text: "Levante levemente o queixo", require: false },
+  { text: "Abaixe levemente o queixo", require: false },
+  { text: "Sorria, olhando para a câmera", require: true },
+];
 
+// ---- elementos --------------------------------------------------------
+const el = (id) => document.getElementById(id);
+const nameInput = el("name");
+const video = el("video");
+const guide = el("guide");
+const poseEl = el("pose");
+const chip = el("chip");
+const chipText = el("chipText");
+const countdown = el("countdown");
+const flash = el("flash");
+const camPlaceholder = el("camPlaceholder");
+const progBar = el("progBar");
+const progLabel = el("progLabel");
+const progPct = el("progPct");
+const captureHint = el("captureHint");
+const startBtn = el("startCapture");
+
+// ---- estado -----------------------------------------------------------
 let camStream = null;
-let capturedDataUrl = null; // foto vinda da webcam (Data URL)
+let captures = [];        // Data URLs capturadas
+let capturing = false;    // sequência de captura em andamento
+let idleLoop = false;     // loop de detecção ocioso ativo
+let studentName = "";
 
-// --- Upload de arquivo -> pré-visualização -----------------------------
-fileInput.addEventListener("change", () => {
-  const file = fileInput.files[0];
-  if (!file) return;
-  capturedDataUrl = null; // prioriza o arquivo escolhido
-  preview.src = URL.createObjectURL(file);
-  preview.style.display = "block";
-});
-
-// --- Webcam -------------------------------------------------------------
-toggleCamBtn.addEventListener("click", async () => {
-  if (camStream) {
-    stopCamera(camStream);
-    camStream = null;
-    camBlock.style.display = "none";
-    toggleCamBtn.textContent = "📷 Usar webcam";
-    return;
-  }
-  try {
-    camStream = await startCamera(video);
-    camBlock.style.display = "block";
-    toggleCamBtn.textContent = "✖ Fechar webcam";
-  } catch (err) {
-    toast("Não foi possível acessar a webcam: " + err.message, "err");
-  }
-});
-
-snapBtn.addEventListener("click", () => {
-  capturedDataUrl = captureFrame(video);
-  fileInput.value = ""; // a captura tem prioridade sobre o upload
-  preview.src = capturedDataUrl;
-  preview.style.display = "block";
-  toast("Foto capturada!", "ok");
-});
-
-// Converte uma Data URL em Blob para enviar via FormData.
-function dataUrlToBlob(dataUrl) {
-  const [meta, b64] = dataUrl.split(",");
-  const mime = meta.match(/:(.*?);/)[1];
-  const bytes = atob(b64);
-  const arr = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-  return new Blob([arr], { type: mime });
+// ---- navegação entre etapas ------------------------------------------
+function goStep(n) {
+  for (const s of [1, 2, 3]) el("s" + s).hidden = s !== n;
+  document.querySelectorAll(".step").forEach((stepEl) => {
+    const step = +stepEl.dataset.step;
+    stepEl.classList.toggle("active", step === n);
+    stepEl.classList.toggle("done", step < n);
+  });
+  document.querySelectorAll(".step-line").forEach((line, i) => {
+    line.classList.toggle("done", i + 1 < n);
+  });
 }
 
-// --- Salvar cadastro ----------------------------------------------------
-saveBtn.addEventListener("click", async () => {
-  const name = nameInput.value.trim();
-  if (!name) { toast("Informe o nome do aluno.", "err"); return; }
+// ETAPA 1 -> 2
+el("toStep2").addEventListener("click", async () => {
+  studentName = nameInput.value.trim();
+  if (!studentName) { toast("Informe o nome do aluno.", "err"); nameInput.focus(); return; }
+  goStep(2);
+  await enterCaptureStep();
+});
 
-  let fileToSend = null;
-  if (fileInput.files[0]) {
-    fileToSend = fileInput.files[0];
-  } else if (capturedDataUrl) {
-    fileToSend = dataUrlToBlob(capturedDataUrl);
-  } else {
-    toast("Escolha uma foto ou capture pela webcam.", "err");
-    return;
+el("backTo1").addEventListener("click", () => { leaveCaptureStep(); goStep(1); });
+
+// ---- ETAPA 2: câmera + detecção ao vivo ------------------------------
+async function enterCaptureStep() {
+  resetCapture();
+  try {
+    camStream = await startCamera(video);
+    camPlaceholder.hidden = true;
+    guide.hidden = false;
+    chip.hidden = false;
+    poseEl.hidden = true;
+    startIdleDetect();
+  } catch (err) {
+    camPlaceholder.hidden = false;
+    camPlaceholder.textContent = "Não foi possível acessar a câmera. Verifique as permissões do navegador.";
+    toast("Falha ao acessar a câmera: " + err.message, "err");
+  }
+}
+
+function leaveCaptureStep() {
+  idleLoop = false;
+  capturing = false;
+  stopCamera(camStream);
+  camStream = null;
+}
+
+function resetCapture() {
+  captures = [];
+  updateProgress();
+  startBtn.hidden = false;
+  startBtn.disabled = false;
+  captureHint.textContent = "Posicione o rosto e inicie a captura.";
+  poseEl.hidden = true;
+  countdown.hidden = true;
+}
+
+// Detecta o rosto no frame atual e atualiza o guia/indicador.
+async function detectNow() {
+  if (!camStream || !video.videoWidth) return { ok: false };
+  let placement = { ok: false, reason: "Procurando rosto…" };
+  try {
+    const frame = captureFrame(video, 0.5);
+    const det = await postJSON("/api/detect", { image: frame });
+    placement = evaluatePlacement(det);
+  } catch (_) { /* ignora falhas pontuais */ }
+  guide.classList.toggle("ok", placement.ok);
+  chip.classList.toggle("ok", placement.ok);
+  chipText.textContent = placement.reason;
+  return placement;
+}
+
+// Loop de detecção enquanto a câmera está ligada e sem captura em curso.
+async function startIdleDetect() {
+  if (idleLoop) return;
+  idleLoop = true;
+  while (idleLoop) {
+    if (!capturing && !el("s2").hidden) await detectNow();
+    await sleep(450);
+  }
+}
+
+// ---- sequência de captura --------------------------------------------
+startBtn.addEventListener("click", runCaptureSequence);
+
+async function runCaptureSequence() {
+  if (capturing) return;
+  if (!camStream || !video.videoWidth) { toast("A câmera não está pronta.", "err"); return; }
+  capturing = true;
+  startBtn.hidden = true;
+  poseEl.hidden = false;
+  captures = [];
+  updateProgress();
+
+  for (let i = 0; i < POSES.length; i++) {
+    const pose = POSES[i];
+    poseEl.textContent = `${i + 1}/${POSES.length} — ${pose.text}`;
+    captureHint.textContent = pose.text;
+
+    // Em poses frontais, espera o rosto ficar bem posicionado (com timeout).
+    if (pose.require) {
+      chipText.textContent = "Posicione o rosto no guia…";
+      const ok = await waitForPlacement(6000);
+      if (!ok) chipText.textContent = "Capturando assim mesmo…";
+    } else {
+      await sleep(900); // tempo para o aluno ajustar a pose lateral
+    }
+
+    await doCountdown(3);
+    captures.push(captureFrame(video, 0.85));
+    triggerFlash();
+    updateProgress();
+    await sleep(550);
   }
 
-  const form = new FormData();
-  form.append("name", name);
-  form.append("photo", fileToSend, "foto.jpg");
+  countdown.hidden = true;
+  poseEl.hidden = true;
+  capturing = false;
+  goReview();
+}
 
-  saveBtn.disabled = true;
-  saveBtn.textContent = "Processando rosto...";
+function waitForPlacement(timeoutMs) {
+  return new Promise(async (resolve) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const p = await detectNow();
+      if (p.ok) { resolve(true); return; }
+      await sleep(300);
+    }
+    resolve(false);
+  });
+}
+
+async function doCountdown(from) {
+  countdown.hidden = false;
+  for (let n = from; n >= 1; n--) {
+    countdown.textContent = n;
+    await sleep(650);
+  }
+  countdown.hidden = true;
+}
+
+function triggerFlash() {
+  flash.classList.add("go");
+  setTimeout(() => flash.classList.remove("go"), 360);
+}
+
+function updateProgress() {
+  const total = POSES.length;
+  const n = captures.length;
+  const pct = Math.round((n / total) * 100);
+  progBar.style.width = pct + "%";
+  progLabel.textContent = `${n} de ${total} fotos`;
+  progPct.textContent = pct + "%";
+}
+
+// ---- ETAPA 3: revisão -------------------------------------------------
+function goReview() {
+  el("reviewName").textContent = studentName;
+  el("reviewCount").textContent = captures.length;
+  const thumbs = el("thumbs");
+  thumbs.innerHTML = "";
+  for (const src of captures) {
+    const div = document.createElement("div");
+    div.className = "thumb";
+    div.innerHTML = `<img src="${src}" alt="captura" />`;
+    thumbs.appendChild(div);
+  }
+  goStep(3);
+}
+
+el("redo").addEventListener("click", async () => {
+  goStep(2);
+  resetCapture();
+  if (!camStream) await enterCaptureStep();
+});
+
+el("finish").addEventListener("click", async () => {
+  const finishBtn = el("finish");
+  finishBtn.disabled = true;
+  finishBtn.textContent = "Processando…";
   try {
-    const res = await api("/api/students", { method: "POST", body: form });
+    const res = await postJSON("/api/students", { name: studentName, images: captures });
     toast(res.message || "Aluno cadastrado!", "ok");
+    leaveCaptureStep();
     nameInput.value = "";
-    fileInput.value = "";
-    capturedDataUrl = null;
-    preview.style.display = "none";
+    studentName = "";
+    captures = [];
+    goStep(1);
     await loadStudents();
   } catch (err) {
     toast(err.message, "err");
   } finally {
-    saveBtn.disabled = false;
-    saveBtn.textContent = "Salvar cadastro";
+    finishBtn.disabled = false;
+    finishBtn.textContent = "Concluir cadastro";
   }
 });
 
-// --- Listagem -----------------------------------------------------------
+// ---- lista de alunos --------------------------------------------------
 async function loadStudents() {
   try {
     const students = await api("/api/students");
-    countEl.textContent = students.length;
-    listEl.innerHTML = "";
-    if (students.length === 0) {
-      listEl.innerHTML = '<p class="muted">Nenhum aluno cadastrado ainda.</p>';
+    el("count").textContent = students.length;
+    const list = el("list");
+    list.innerHTML = "";
+    if (!students.length) {
+      list.innerHTML = '<div class="empty">Nenhum aluno cadastrado ainda.</div>';
       return;
     }
     for (const s of students) {
       const card = document.createElement("div");
-      card.className = "student-card";
+      card.className = "student";
       card.innerHTML = `
         <img src="${s.photo_url}" alt="${s.name}" />
         <div class="name">${s.name}</div>
-        <button class="danger" data-id="${s.id}">Remover</button>
-      `;
+        <div class="meta">${s.captures} foto(s)</div>
+        <button class="btn btn-soft-danger btn-block" data-id="${s.id}">Remover</button>`;
       card.querySelector("button").addEventListener("click", () => removeStudent(s.id, s.name));
-      listEl.appendChild(card);
+      list.appendChild(card);
     }
   } catch (err) {
     toast("Falha ao carregar alunos: " + err.message, "err");
@@ -133,7 +275,7 @@ async function removeStudent(id, name) {
   }
 }
 
-// Encerra a câmera ao sair da página.
-window.addEventListener("beforeunload", () => stopCamera(camStream));
+window.addEventListener("beforeunload", leaveCaptureStep);
 
+goStep(1);
 loadStudents();

@@ -3,56 +3,112 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chamada Automática</title>
+  <title>Chamada — Chamada Facial</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <header class="topbar">
-    <h1>🎓 Chamada Facial</h1>
-    <nav>
+    <div class="brand">
+      <span class="logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6"/></svg>
+      </span>
+      <span>Chamada Facial<small>Reconhecimento facial para presença</small></span>
+    </div>
+    <nav class="nav">
       <a href="index.html">Início</a>
       <a href="cadastro.html">Cadastro</a>
       <a href="chamada.html" class="active">Chamada</a>
     </nav>
   </header>
 
-  <main>
-    <div class="grid-2">
-      <!-- Câmera + detecção -->
-      <div class="card">
-        <h2>Reconhecimento ao vivo</h2>
-        <div class="video-wrap">
-          <video id="video" autoplay playsinline muted></video>
-          <canvas id="overlay"></canvas>
-        </div>
-        <div class="btn-row">
-          <button id="start" type="button">▶ Iniciar câmera</button>
-          <button id="auto" class="secondary" type="button" disabled>⏱ Chamada automática</button>
-          <button id="snap" class="secondary" type="button" disabled>📸 Reconhecer agora</button>
-        </div>
-        <p class="muted" style="margin-top:12px;">
-          <span id="dot" class="status-dot"></span>
-          <span id="statusText">Câmera desligada.</span>
-        </p>
+  <main class="container">
+    <div class="page-head">
+      <h1>Chamada</h1>
+      <p>Reconheça os alunos pela webcam, revise a lista e confirme a presença.</p>
+    </div>
+
+    <div class="card">
+      <div class="stepper">
+        <div class="step active" data-step="1"><span class="dot">1</span><span class="name">Reconhecimento</span></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="2"><span class="dot">2</span><span class="name">Revisão</span></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="3"><span class="dot">3</span><span class="name">Confirmação</span></div>
       </div>
 
-      <!-- Lista de chamada -->
-      <div class="card">
-        <h2>Lista de chamada — <span id="date"></span></h2>
-        <div class="stats">
-          <div><span id="presentCount">0</span><small>Presentes</small></div>
-          <div><span id="totalCount">0</span><small>Total de alunos</small></div>
+      <!-- ETAPA 1: reconhecimento ao vivo -->
+      <section id="s1">
+        <div class="grid-2">
+          <div>
+            <div class="stage" id="stage">
+              <video id="video" autoplay playsinline muted></video>
+              <canvas id="overlay"></canvas>
+              <div class="placeholder" id="camPlaceholder">Clique em “Iniciar câmera” para começar o reconhecimento.</div>
+            </div>
+          </div>
+          <div>
+            <h2>Reconhecimento ao vivo</h2>
+            <p class="sub">Aponte a câmera para os alunos. Os rostos reconhecidos são adicionados automaticamente à chamada desta sessão.</p>
+            <div class="status"><span class="led-dot" id="led"></span><span id="statusText">Câmera desligada.</span></div>
+
+            <p style="margin:18px 0 4px;font-weight:600;font-size:.9rem;">
+              Reconhecidos nesta sessão (<span id="recCount">0</span> de <span id="recTotal">0</span>)
+            </p>
+            <div class="reclist" id="reclist"><span class="muted" style="font-size:.88rem;">Ninguém reconhecido ainda.</span></div>
+
+            <div class="actions" style="margin-top:22px;">
+              <button class="btn" id="camToggle">Iniciar câmera</button>
+              <button class="btn btn-ghost" id="toReview">Revisar chamada</button>
+            </div>
+          </div>
         </div>
-        <div class="btn-row">
-          <button id="reset" class="danger" type="button">Zerar chamada de hoje</button>
+      </section>
+
+      <!-- ETAPA 2: revisão e confirmação -->
+      <section id="s2" hidden>
+        <div class="row between" style="flex-wrap:wrap;gap:12px;">
+          <h2 style="margin:0;">Revisão — <span id="reviewDate"></span></h2>
+          <div class="actions">
+            <button class="btn btn-ghost" id="markAll" type="button">Todos presentes</button>
+            <button class="btn btn-ghost" id="clearAll" type="button">Limpar</button>
+          </div>
+        </div>
+        <p class="sub">Ajuste manualmente quem está presente e confirme. Alunos reconhecidos já vêm marcados.</p>
+
+        <div class="stats">
+          <div class="stat"><b id="stPresent">0</b><span>Presentes</span></div>
+          <div class="stat"><b id="stAbsent">0</b><span>Ausentes</span></div>
+          <div class="stat"><b id="stTotal">0</b><span>Total de alunos</span></div>
+        </div>
+
+        <table>
+          <thead><tr><th>Aluno</th><th>Reconhecido</th><th style="text-align:right;">Presente</th></tr></thead>
+          <tbody id="reviewBody"></tbody>
+        </table>
+
+        <div class="actions" style="margin-top:22px;">
+          <button class="btn btn-ghost" id="backToCam">Voltar ao reconhecimento</button>
+          <button class="btn" id="confirm">Confirmar chamada</button>
+        </div>
+      </section>
+
+      <!-- ETAPA 3: confirmação -->
+      <section id="s3" hidden>
+        <div class="center" style="padding:10px 0 4px;">
+          <div style="width:64px;height:64px;border-radius:50%;background:var(--success-soft);color:var(--success);display:grid;place-items:center;margin:0 auto 14px;">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <h2 style="margin:0;">Chamada confirmada</h2>
+          <p class="sub" id="summaryText" style="margin-top:6px;"></p>
         </div>
         <table>
-          <thead>
-            <tr><th>Aluno</th><th>Situação</th><th>Horário</th></tr>
-          </thead>
-          <tbody id="attendanceBody"></tbody>
+          <thead><tr><th>Aluno</th><th>Situação</th><th>Horário</th></tr></thead>
+          <tbody id="summaryBody"></tbody>
         </table>
-      </div>
+        <div class="actions end" style="margin-top:22px;">
+          <button class="btn" id="newCall">Nova chamada</button>
+        </div>
+      </section>
     </div>
   </main>
 

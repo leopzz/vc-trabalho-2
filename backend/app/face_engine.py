@@ -98,21 +98,37 @@ def cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
     return float(1.0 - np.dot(a, b) / denom)
 
 
+def _student_embeddings(student: dict) -> List[np.ndarray]:
+    """Retorna a lista de embeddings de um aluno.
+
+    Aceita tanto o formato novo (``embeddings``: lista de vetores) quanto o
+    antigo (``embedding``: vetor único), por compatibilidade.
+    """
+    if "embeddings" in student:
+        return [np.asarray(e, dtype=np.float32) for e in student["embeddings"]]
+    if "embedding" in student:
+        return [np.asarray(student["embedding"], dtype=np.float32)]
+    return []
+
+
 def find_best_match(embedding: np.ndarray,
                     students: List[dict]) -> Tuple[dict | None, float]:
     """Compara um embedding com a base de alunos.
 
-    Retorna ``(aluno, distancia)`` do melhor candidato. Se nenhum aluno
-    estiver abaixo do limiar, retorna ``(None, melhor_distancia)``.
+    Para cada aluno usamos a MENOR distância entre o rosto recebido e todas as
+    fotos/poses cadastradas daquele aluno. Retorna ``(aluno, distancia)`` do
+    melhor candidato. Se nenhum aluno estiver abaixo do limiar, retorna
+    ``(None, melhor_distancia)``.
     """
     best_student = None
     best_distance = float("inf")
 
     for student in students:
-        dist = cosine_distance(embedding, student["embedding"])
-        if dist < best_distance:
-            best_distance = dist
-            best_student = student
+        for ref in _student_embeddings(student):
+            dist = cosine_distance(embedding, ref)
+            if dist < best_distance:
+                best_distance = dist
+                best_student = student
 
     if best_student is not None and best_distance <= config.RECOGNITION_THRESHOLD:
         return best_student, best_distance

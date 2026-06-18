@@ -3,59 +3,97 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cadastro de Alunos</title>
+  <title>Cadastro de Alunos — Chamada Facial</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <header class="topbar">
-    <h1>🎓 Chamada Facial</h1>
-    <nav>
+    <div class="brand">
+      <span class="logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6"/></svg>
+      </span>
+      <span>Chamada Facial<small>Reconhecimento facial para presença</small></span>
+    </div>
+    <nav class="nav">
       <a href="index.html">Início</a>
       <a href="cadastro.html" class="active">Cadastro</a>
       <a href="chamada.html">Chamada</a>
     </nav>
   </header>
 
-  <main>
-    <div class="grid-2">
-      <!-- Formulário de cadastro -->
-      <div class="card">
-        <h2>Cadastrar aluno</h2>
-        <p class="muted">Informe o nome e escolha uma foto (upload) ou capture pela webcam.</p>
+  <main class="container">
+    <div class="page-head">
+      <h1>Cadastro de aluno</h1>
+      <p>Siga as etapas: informe o nome e capture algumas fotos do rosto.</p>
+    </div>
 
-        <label for="name">Nome do aluno</label>
-        <input type="text" id="name" placeholder="Ex.: Maria Silva" />
-
-        <label for="file">Foto (upload)</label>
-        <input type="file" id="file" accept="image/*" />
-
-        <div class="btn-row">
-          <button id="toggleCam" class="secondary" type="button">📷 Usar webcam</button>
-        </div>
-
-        <!-- Bloco da webcam (oculto até ativar) -->
-        <div id="camBlock" style="display:none;">
-          <div class="video-wrap" style="margin-top:14px;">
-            <video id="video" autoplay playsinline muted></video>
-          </div>
-          <div class="btn-row">
-            <button id="snap" type="button">Capturar foto</button>
-          </div>
-        </div>
-
-        <img id="preview" class="preview" style="display:none;" alt="Pré-visualização" />
-
-        <div class="btn-row">
-          <button id="save" type="button">Salvar cadastro</button>
-        </div>
+    <div class="card">
+      <!-- Stepper -->
+      <div class="stepper">
+        <div class="step active" data-step="1"><span class="dot">1</span><span class="name">Dados</span></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="2"><span class="dot">2</span><span class="name">Captura</span></div>
+        <div class="step-line"></div>
+        <div class="step" data-step="3"><span class="dot">3</span><span class="name">Revisão</span></div>
       </div>
 
-      <!-- Lista de alunos cadastrados -->
-      <div class="card">
-        <h2>Alunos cadastrados (<span id="count">0</span>)</h2>
-        <p class="muted">Estes alunos serão considerados na chamada.</p>
-        <div id="list" class="student-list"></div>
-      </div>
+      <!-- ETAPA 1: dados -->
+      <section id="s1">
+        <div class="field">
+          <label for="name">Nome do aluno</label>
+          <input type="text" id="name" placeholder="Ex.: Maria Silva" autocomplete="off" />
+          <div class="hint">Se o nome já existir, o cadastro será atualizado com as novas fotos.</div>
+        </div>
+        <div class="actions end">
+          <button class="btn" id="toStep2">Continuar</button>
+        </div>
+      </section>
+
+      <!-- ETAPA 2: captura -->
+      <section id="s2" hidden>
+        <div class="grid-2">
+          <div>
+            <div class="stage" id="stage">
+              <video id="video" autoplay playsinline muted></video>
+              <div class="face-guide" id="guide" hidden></div>
+              <div class="pose" id="pose" hidden></div>
+              <div class="chip" id="chip" hidden><span class="led"></span><span id="chipText">Procurando rosto…</span></div>
+              <div class="countdown" id="countdown" hidden></div>
+              <div class="flash" id="flash"></div>
+              <div class="placeholder" id="camPlaceholder">Ativando a câmera…</div>
+            </div>
+          </div>
+          <div>
+            <h2>Captura guiada</h2>
+            <p class="sub">Mantenha o rosto dentro do guia oval. O sistema vai capturar várias poses (frente e laterais) automaticamente.</p>
+            <div class="progress-label"><span id="progLabel">0 de 0 fotos</span><span id="progPct">0%</span></div>
+            <div class="progress"><i id="progBar"></i></div>
+            <p class="hint" id="captureHint" style="margin-top:14px;">Posicione o rosto e inicie a captura.</p>
+            <div class="actions" style="margin-top:18px;">
+              <button class="btn btn-ghost" id="backTo1">Voltar</button>
+              <button class="btn" id="startCapture">Iniciar captura</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ETAPA 3: revisão -->
+      <section id="s3" hidden>
+        <h2>Revisar e concluir</h2>
+        <p class="sub">Conferindo o cadastro de <strong id="reviewName"></strong> — <span id="reviewCount">0</span> fotos capturadas.</p>
+        <div class="thumbs" id="thumbs"></div>
+        <div class="actions" style="margin-top:20px;">
+          <button class="btn btn-ghost" id="redo">Refazer captura</button>
+          <button class="btn" id="finish">Concluir cadastro</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Alunos cadastrados -->
+    <div class="card">
+      <h2>Alunos cadastrados (<span id="count">0</span>)</h2>
+      <p class="sub">Estes alunos serão considerados na chamada.</p>
+      <div class="students" id="list"></div>
     </div>
   </main>
 

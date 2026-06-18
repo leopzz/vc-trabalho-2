@@ -1,174 +1,252 @@
-// Lógica da tela de chamada (reconhecimento ao vivo).
+// Fluxo da chamada: Reconhecimento ao vivo -> Revisão -> Confirmação.
 
-const video = document.getElementById("video");
-const overlay = document.getElementById("overlay");
+const el = (id) => document.getElementById(id);
+const video = el("video");
+const overlay = el("overlay");
 const ctx = overlay.getContext("2d");
 
-const startBtn = document.getElementById("start");
-const autoBtn = document.getElementById("auto");
-const snapBtn = document.getElementById("snap");
-const resetBtn = document.getElementById("reset");
-
-const dot = document.getElementById("dot");
-const statusText = document.getElementById("statusText");
-const dateEl = document.getElementById("date");
-const presentCountEl = document.getElementById("presentCount");
-const totalCountEl = document.getElementById("totalCount");
-const attendanceBody = document.getElementById("attendanceBody");
-
 let camStream = null;
-let autoTimer = null;
-let busy = false; // evita sobrepor requisições
+let recognizing = false;
+let busy = false;
+let students = [];                 // [{id,name,photo_url,...}]
+const sessionRecognized = new Set();
+let currentDate = todayISO();
 
-const AUTO_INTERVAL_MS = 2500; // intervalo entre reconhecimentos automáticos
+const RECOGNIZE_INTERVAL = 1700;
 
-// --- Câmera -------------------------------------------------------------
-startBtn.addEventListener("click", async () => {
-  if (camStream) {
-    stopAuto();
-    stopCamera(camStream);
-    camStream = null;
-    clearOverlay();
-    startBtn.textContent = "▶ Iniciar câmera";
-    autoBtn.disabled = snapBtn.disabled = true;
-    setStatus(false, "Câmera desligada.");
-    return;
-  }
+// ---- navegação --------------------------------------------------------
+function goStep(n) {
+  for (const s of [1, 2, 3]) el("s" + s).hidden = s !== n;
+  document.querySelectorAll(".step").forEach((stepEl) => {
+    const step = +stepEl.dataset.step;
+    stepEl.classList.toggle("active", step === n);
+    stepEl.classList.toggle("done", step < n);
+  });
+  document.querySelectorAll(".step-line").forEach((line, i) => {
+    line.classList.toggle("done", i + 1 < n);
+  });
+}
+
+// ---- carregamento -----------------------------------------------------
+async function loadStudents() {
+  students = await api("/api/students");
+  el("recTotal").textContent = students.length;
+}
+
+// ---- ETAPA 1: câmera + reconhecimento --------------------------------
+el("camToggle").addEventListener("click", async () => {
+  if (camStream) { stopRecognition(); return; }
   try {
+    if (!students.length) await loadStudents();
+    if (!students.length) { toast("Cadastre alunos antes de fazer a chamada.", "err"); return; }
     camStream = await startCamera(video);
-    // O canvas usa a MESMA resolução intrínseca do vídeo, então as caixas
-    // (em coordenadas de pixel do frame) alinham perfeitamente com o overlay.
     overlay.width = video.videoWidth;
     overlay.height = video.videoHeight;
-    startBtn.textContent = "⏹ Desligar câmera";
-    autoBtn.disabled = snapBtn.disabled = false;
-    setStatus(true, "Câmera ligada. Inicie a chamada automática ou reconheça manualmente.");
+    el("camPlaceholder").hidden = true;
+    el("camToggle").textContent = "Desligar câmera";
+    setStatus(true, "Reconhecendo…");
+    recognizing = true;
+    recognitionLoop();
   } catch (err) {
-    toast("Não foi possível acessar a webcam: " + err.message, "err");
+    toast("Falha ao acessar a câmera: " + err.message, "err");
   }
 });
 
-// --- Reconhecimento -----------------------------------------------------
-snapBtn.addEventListener("click", () => recognizeOnce());
+function stopRecognition() {
+  recognizing = false;
+  stopCamera(camStream);
+  camStream = null;
+  clearOverlay();
+  el("camToggle").textContent = "Iniciar câmera";
+  el("camPlaceholder").hidden = false;
+  setStatus(false, "Câmera desligada.");
+}
 
-autoBtn.addEventListener("click", () => {
-  if (autoTimer) {
-    stopAuto();
-  } else {
-    autoBtn.textContent = "⏹ Parar automática";
-    setStatus(true, "Chamada automática em andamento...");
-    recognizeOnce();
-    autoTimer = setInterval(recognizeOnce, AUTO_INTERVAL_MS);
+async function recognitionLoop() {
+  while (recognizing && camStream) {
+    if (!busy) await recognizeOnce();
+    await sleep(RECOGNIZE_INTERVAL);
   }
-});
-
-function stopAuto() {
-  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
-  autoBtn.textContent = "⏱ Chamada automática";
 }
 
 async function recognizeOnce() {
-  if (busy || !camStream) return;
   busy = true;
   try {
-    const image = captureFrame(video, 0.85);
-    const res = await api("/api/recognize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image }),
-    });
-    drawDetections(res.detections);
-    renderAttendance(res.attendance);
-    if (res.newly_present && res.newly_present.length) {
-      toast("Presença registrada: " + res.newly_present.join(", "), "ok");
+    if (video.videoWidth && overlay.width !== video.videoWidth) {
+      overlay.width = video.videoWidth;
+      overlay.height = video.videoHeight;
     }
-    setStatus(true, `${res.faces_detected} rosto(s) detectado(s).`);
+    const image = captureFrame(video, 0.85);
+    const res = await postJSON("/api/recognize", { image, date: currentDate });
+    drawDetections(res.detections);
+    let added = 0;
+    for (const name of res.recognized) {
+      if (!sessionRecognized.has(name)) { sessionRecognized.add(name); added++; }
+    }
+    if (added) updateReclist();
+    setStatus(true, `${res.faces_detected} rosto(s) no quadro — ${sessionRecognized.size} reconhecido(s).`);
   } catch (err) {
-    toast(err.message, "err");
+    setStatus(true, "Erro: " + err.message);
   } finally {
     busy = false;
   }
 }
 
-// --- Desenho das caixas -------------------------------------------------
 function clearOverlay() { ctx.clearRect(0, 0, overlay.width, overlay.height); }
 
 function drawDetections(detections) {
   clearOverlay();
-  ctx.lineWidth = Math.max(2, overlay.width / 200);
-  ctx.font = `${Math.max(14, overlay.width / 28)}px "Segoe UI", sans-serif`;
+  const lw = Math.max(2, overlay.width / 220);
+  ctx.lineWidth = lw;
+  ctx.font = `600 ${Math.max(14, overlay.width / 32)}px -apple-system, Segoe UI, sans-serif`;
   ctx.textBaseline = "top";
-
   for (const d of detections) {
     const { x, y, w, h } = d.box;
     const color = d.recognized ? "#22c55e" : "#f59e0b";
-    const label = d.recognized ? d.name : "Desconhecido";
-
+    let label = d.recognized ? d.name : "Desconhecido";
+    if (d.recognized && d.confidence != null) label += `  ${Math.round(d.confidence * 100)}%`;
     ctx.strokeStyle = color;
     ctx.strokeRect(x, y, w, h);
-
-    // Fundo do rótulo.
-    const padding = 6;
-    const textW = ctx.measureText(label).width;
-    const textH = parseInt(ctx.font, 10) + padding;
+    const pad = 6;
+    const tw = ctx.measureText(label).width;
+    const th = parseInt(ctx.font, 10) + pad;
     ctx.fillStyle = color;
-    ctx.fillRect(x, Math.max(y - textH, 0), textW + padding * 2, textH);
-    ctx.fillStyle = "#0f172a";
-    ctx.fillText(label, x + padding, Math.max(y - textH, 0) + padding / 2);
+    ctx.fillRect(x - lw / 2, Math.max(y - th, 0), tw + pad * 2, th);
+    ctx.fillStyle = "#06210f";
+    ctx.fillText(label, x + pad, Math.max(y - th, 0) + pad / 2);
   }
 }
 
-// --- Lista de chamada ---------------------------------------------------
-function renderAttendance(attendance) {
-  if (!attendance) return;
-  dateEl.textContent = formatDate(attendance.date);
-  const rows = attendance.students || [];
-  totalCountEl.textContent = rows.length;
-  presentCountEl.textContent = rows.filter((r) => r.present).length;
-
-  attendanceBody.innerHTML = "";
-  if (rows.length === 0) {
-    attendanceBody.innerHTML = '<tr><td colspan="3" class="muted">Nenhum aluno cadastrado.</td></tr>';
+function updateReclist() {
+  el("recCount").textContent = sessionRecognized.size;
+  const list = el("reclist");
+  if (!sessionRecognized.size) {
+    list.innerHTML = '<span class="muted" style="font-size:.88rem;">Ninguém reconhecido ainda.</span>';
     return;
   }
+  list.innerHTML = "";
+  for (const name of [...sessionRecognized].sort()) {
+    const tag = document.createElement("span");
+    tag.className = "rectag";
+    tag.textContent = name;
+    list.appendChild(tag);
+  }
+}
+
+function setStatus(live, text) {
+  el("led").classList.toggle("live", live);
+  el("statusText").textContent = text;
+}
+
+// ---- ETAPA 2: revisão -------------------------------------------------
+el("toReview").addEventListener("click", async () => {
+  if (!students.length) { try { await loadStudents(); } catch (_) {} }
+  if (!students.length) { toast("Cadastre alunos antes de fazer a chamada.", "err"); return; }
+  recognizing = false;
+  stopCamera(camStream);
+  camStream = null;
+  clearOverlay();
+  el("camToggle").textContent = "Iniciar câmera";
+  el("camPlaceholder").hidden = false;
+  buildReview();
+  goStep(2);
+});
+
+el("backToCam").addEventListener("click", () => { goStep(1); });
+
+function buildReview() {
+  currentDate = todayISO();
+  el("reviewDate").textContent = formatDateBR(currentDate);
+  const body = el("reviewBody");
+  body.innerHTML = "";
+  const sorted = [...students].sort((a, b) => a.name.localeCompare(b.name));
+  for (const s of sorted) {
+    const recognized = sessionRecognized.has(s.name);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><div class="name-cell"><img class="avatar" src="${s.photo_url}" alt="">${s.name}</div></td>
+      <td>${recognized
+        ? '<span class="badge present">Sim</span>'
+        : '<span class="badge absent">Não</span>'}</td>
+      <td style="text-align:right;">
+        <label class="switch">
+          <input type="checkbox" data-name="${s.name}" ${recognized ? "checked" : ""}>
+          <span class="slider"></span>
+        </label>
+      </td>`;
+    body.appendChild(tr);
+  }
+  body.querySelectorAll("input[type=checkbox]").forEach((cb) =>
+    cb.addEventListener("change", updateReviewStats));
+  updateReviewStats();
+}
+
+function reviewChecks() {
+  return [...el("reviewBody").querySelectorAll("input[type=checkbox]")];
+}
+
+function updateReviewStats() {
+  const checks = reviewChecks();
+  const present = checks.filter((c) => c.checked).length;
+  el("stPresent").textContent = present;
+  el("stAbsent").textContent = checks.length - present;
+  el("stTotal").textContent = checks.length;
+}
+
+el("markAll").addEventListener("click", () => {
+  reviewChecks().forEach((c) => (c.checked = true));
+  updateReviewStats();
+});
+el("clearAll").addEventListener("click", () => {
+  reviewChecks().forEach((c) => (c.checked = false));
+  updateReviewStats();
+});
+
+// ---- confirmar --------------------------------------------------------
+el("confirm").addEventListener("click", async () => {
+  const present = reviewChecks().filter((c) => c.checked).map((c) => c.dataset.name);
+  const btn = el("confirm");
+  btn.disabled = true; btn.textContent = "Salvando…";
+  try {
+    const att = await postJSON("/api/attendance/confirm", { present, date: currentDate });
+    buildSummary(att);
+    goStep(3);
+    toast("Chamada confirmada e salva.", "ok");
+  } catch (err) {
+    toast(err.message, "err");
+  } finally {
+    btn.disabled = false; btn.textContent = "Confirmar chamada";
+  }
+});
+
+// ---- ETAPA 3: resumo --------------------------------------------------
+function buildSummary(att) {
+  const rows = att.students || [];
+  const present = rows.filter((r) => r.present).length;
+  el("summaryText").textContent =
+    `${formatDateBR(att.date)} — ${present} de ${rows.length} alunos presentes.`;
+  const body = el("summaryBody");
+  body.innerHTML = "";
   for (const r of rows) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${r.name}</td>
-      <td><span class="badge ${r.present ? "present" : "absent"}">${r.present ? "Presente" : "Ausente"}</span></td>
-      <td>${r.time || "—"}</td>
-    `;
-    attendanceBody.appendChild(tr);
+      <td>${r.present
+        ? '<span class="badge present">Presente</span>'
+        : '<span class="badge absent">Ausente</span>'}</td>
+      <td>${r.time || "—"}</td>`;
+    body.appendChild(tr);
   }
 }
 
-function formatDate(iso) {
-  if (!iso) return "";
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
-}
-
-// --- Reset --------------------------------------------------------------
-resetBtn.addEventListener("click", async () => {
-  if (!confirm("Zerar todas as presenças de hoje?")) return;
-  try {
-    const att = await api("/api/attendance/reset", { method: "POST" });
-    renderAttendance(att);
-    toast("Chamada zerada.", "ok");
-  } catch (err) {
-    toast(err.message, "err");
-  }
+el("newCall").addEventListener("click", () => {
+  sessionRecognized.clear();
+  updateReclist();
+  goStep(1);
 });
 
-// --- Util ---------------------------------------------------------------
-function setStatus(live, text) {
-  dot.className = "status-dot" + (live ? " live" : "");
-  statusText.textContent = text;
-}
+// ---- init -------------------------------------------------------------
+window.addEventListener("beforeunload", () => { recognizing = false; stopCamera(camStream); });
 
-window.addEventListener("beforeunload", () => { stopAuto(); stopCamera(camStream); });
-
-// Carrega a lista inicial (mesmo sem câmera ligada).
-(async function init() {
-  try { renderAttendance(await api("/api/attendance")); } catch (_) {}
-})();
+goStep(1);
+loadStudents().then(updateReclist).catch(() => {});

@@ -1,21 +1,27 @@
 """API FastAPI da aplicação de chamada por reconhecimento facial.
 
 Endpoints principais:
-  POST   /api/students            -> cadastra aluno (nome + foto)
+  POST   /api/students            -> cadastra aluno (nome + várias fotos)
   GET    /api/students            -> lista alunos cadastrados
   DELETE /api/students/{id}       -> remove aluno
-  GET    /api/students/{id}/photo -> retorna a foto recortada do aluno
-  POST   /api/recognize           -> recebe um frame, detecta + reconhece rostos
+  GET    /api/students/{id}/photo -> retorna a foto do aluno
+  POST   /api/detect              -> detecta rostos (guia de posicionamento)
+  POST   /api/recognize           -> reconhece rostos em um frame (sem salvar)
   GET    /api/attendance          -> lista de chamada de uma data
+  POST   /api/attendance/confirm  -> confirma/salva a chamada revisada
   POST   /api/attendance/reset    -> zera a chamada de uma data
+
+O reconhecimento NÃO grava presença automaticamente: ele apenas identifica os
+rostos. A presença só é persistida quando o professor revisa e confirma a
+chamada (POST /api/attendance/confirm).
 
 O frontend estático é servido na raiz "/".
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -28,11 +34,9 @@ config.ensure_dirs()
 app = FastAPI(
     title="Chamada por Reconhecimento Facial",
     description="Detecção com Haarcascade (OpenCV) + reconhecimento com DeepFace.",
-    version="1.0.0",
+    version="2.0.0",
 )
 
-# Libera o frontend para chamar a API (útil em desenvolvimento, caso o
-# frontend seja servido por outra porta).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -42,11 +46,25 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
-# Modelos de dados (entrada/saída)
+# Modelos de entrada
 # ---------------------------------------------------------------------------
 
+class EnrollPayload(BaseModel):
+    name: str
+    images: List[str]            # lista de Data URLs (várias poses do rosto)
+
+
+class ImagePayload(BaseModel):
+    image: str                   # Data URL única
+
+
 class RecognizePayload(BaseModel):
-    image: str          # Data URL (data:image/jpeg;base64,...)
+    image: str
+    date: Optional[str] = None
+
+
+class ConfirmPayload(BaseModel):
+    present: List[str]           # nomes marcados como presentes
     date: Optional[str] = None
 
 
@@ -55,48 +73,72 @@ class RecognizePayload(BaseModel):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/students")
-async def create_student(name: str = Form(...), photo: UploadFile = File(...)):
-    """Cadastra um aluno: detecta o rosto na foto e armazena o embedding."""
-    name = name.strip()
+async def create_student(payload: EnrollPayload):
+    """Cadastra um aluno a partir de VÁRIAS fotos (poses diferentes).
+
+    Para cada foto: detecta o rosto (Haarcascade), recorta e extrai o
+    embedding (DeepFace). Guardamos todos os embeddings válidos — isso deixa o
+    reconhecimento bem mais robusto a variações de ângulo e iluminação.
+    """
+    name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="O nome é obrigatório.")
+    if not payload.images:
+        raise HTTPException(status_code=400, detail="Nenhuma foto foi enviada.")
 
-    raw = await photo.read()
-    try:
-        image = imaging.bytes_to_bgr(raw)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    embeddings: List[list] = []
+    thumbnail = None
 
-    # 1) Detecção com Haarcascade.
-    faces = face_engine.detect_faces(image)
-    if not faces:
+    for data_url in payload.images:
+        try:
+            image = imaging.data_url_to_bgr(data_url)
+        except Exception:  # noqa: BLE001 - foto inválida, ignora
+            continue
+
+        faces = face_engine.detect_faces(image)
+        if not faces:
+            continue
+
+        largest = max(faces, key=lambda b: b[2] * b[3])
+        face_crop = face_engine.crop_face(image, largest)
+
+        try:
+            embedding = face_engine.get_embedding(face_crop)
+        except Exception:  # noqa: BLE001 - rosto ruim, ignora
+            continue
+
+        embeddings.append(embedding.tolist())
+        if thumbnail is None:           # usa a 1ª foto válida como miniatura
+            thumbnail = face_crop
+
+    if len(embeddings) < config.MIN_VALID_CAPTURES:
         raise HTTPException(
             status_code=422,
-            detail="Nenhum rosto detectado na foto. Tente uma foto mais nítida e frontal.",
+            detail=(
+                f"Detectamos rosto em apenas {len(embeddings)} foto(s) "
+                f"(mínimo {config.MIN_VALID_CAPTURES}). Refaça a captura com "
+                "boa iluminação e o rosto dentro do guia."
+            ),
         )
 
-    # Usa o maior rosto (área) — geralmente o aluno em primeiro plano.
-    largest = max(faces, key=lambda b: b[2] * b[3])
-    face_crop = face_engine.crop_face(image, largest)
-
-    # 2) Embedding com DeepFace.
-    try:
-        embedding = face_engine.get_embedding(face_crop)
-    except Exception as exc:  # noqa: BLE001 - erro do DeepFace
-        raise HTTPException(status_code=500, detail=f"Falha ao processar o rosto: {exc}")
-
-    # 3) Salva a foto recortada e registra o aluno.
     safe_name = "".join(c if c.isalnum() else "_" for c in name).strip("_").lower()
     filename = f"{safe_name or 'aluno'}.jpg"
-    imaging.save_jpeg(face_crop, config.STUDENTS_DIR / filename)
+    imaging.save_jpeg(thumbnail, config.STUDENTS_DIR / filename)
 
-    student = storage.add_student(name, filename, embedding.tolist())
+    student = storage.add_student(name, filename, embeddings)
     return {
         "id": student["id"],
         "name": student["name"],
+        "captures": len(embeddings),
         "photo_url": f"/api/students/{student['id']}/photo",
-        "message": f"Aluno '{name}' cadastrado com sucesso.",
+        "message": f"Aluno '{name}' cadastrado com {len(embeddings)} foto(s).",
     }
+
+
+def _capture_count(student: dict) -> int:
+    if "embeddings" in student:
+        return len(student["embeddings"])
+    return 1 if "embedding" in student else 0
 
 
 @app.get("/api/students")
@@ -106,6 +148,7 @@ async def list_students():
         {
             "id": s["id"],
             "name": s["name"],
+            "captures": _capture_count(s),
             "photo_url": f"/api/students/{s['id']}/photo",
             "created_at": s.get("created_at"),
         }
@@ -133,16 +176,40 @@ async def remove_student(student_id: int):
 
 
 # ---------------------------------------------------------------------------
-# Reconhecimento / Chamada
+# Detecção ao vivo (guia de posicionamento durante a captura)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/detect")
+async def detect(payload: ImagePayload):
+    """Detecta rostos em um frame e devolve as caixas + tamanho da imagem.
+
+    Usado pelo wizard de cadastro para dar feedback em tempo real ("rosto bem
+    posicionado") sem precisar rodar o DeepFace, que é mais pesado.
+    """
+    try:
+        image = imaging.data_url_to_bgr(payload.image)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Imagem inválida: {exc}")
+
+    h, w = image.shape[:2]
+    faces = face_engine.detect_faces(image)
+    return {
+        "width": w,
+        "height": h,
+        "faces": [{"x": x, "y": y, "w": fw, "h": fh} for (x, y, fw, fh) in faces],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Reconhecimento (NÃO persiste presença)
 # ---------------------------------------------------------------------------
 
 @app.post("/api/recognize")
 async def recognize(payload: RecognizePayload):
-    """Recebe um frame da webcam, detecta rostos e marca presença.
+    """Recebe um frame da webcam e identifica os rostos.
 
-    Retorna as caixas detectadas (com nome/confiança) e a lista de chamada
-    atualizada, permitindo ao frontend desenhar os retângulos e atualizar a
-    tabela em tempo real.
+    Retorna as caixas detectadas com nome/confiança. A presença NÃO é salva
+    aqui — o frontend acumula os reconhecidos e o professor confirma depois.
     """
     try:
         image = imaging.data_url_to_bgr(payload.image)
@@ -153,61 +220,56 @@ async def recognize(payload: RecognizePayload):
     faces = face_engine.detect_faces(image)
 
     detections = []
-    newly_present = []
-
     for box in faces:
         x, y, w, h = box
         result = {
             "box": {"x": x, "y": y, "w": w, "h": h},
             "name": None,
             "recognized": False,
-            "distance": None,
+            "confidence": None,
         }
-
         if students:
             face_crop = face_engine.crop_face(image, box)
             try:
                 embedding = face_engine.get_embedding(face_crop)
-            except Exception:  # noqa: BLE001 - rosto ruim, ignora
+            except Exception:  # noqa: BLE001
                 detections.append(result)
                 continue
-
             match, distance = face_engine.find_best_match(embedding, students)
-            result["distance"] = round(distance, 4)
             if match is not None:
                 result["name"] = match["name"]
                 result["recognized"] = True
-                if storage.mark_present(match["name"], payload.date):
-                    newly_present.append(match["name"])
-
+                # Confiança aproximada (0..1) a partir da distância e do limiar.
+                conf = max(0.0, 1.0 - distance / config.RECOGNITION_THRESHOLD)
+                result["confidence"] = round(conf, 3)
         detections.append(result)
 
+    recognized_names = sorted({d["name"] for d in detections if d["recognized"]})
     return {
         "faces_detected": len(faces),
         "detections": detections,
-        "newly_present": newly_present,
-        "attendance": storage.attendance_for_date(payload.date),
+        "recognized": recognized_names,
     }
 
+
+# ---------------------------------------------------------------------------
+# Chamada / Presença
+# ---------------------------------------------------------------------------
 
 @app.get("/api/attendance")
 async def get_attendance(date: Optional[str] = None):
     return storage.attendance_for_date(date)
 
 
+@app.post("/api/attendance/confirm")
+async def confirm_attendance(payload: ConfirmPayload):
+    """Persiste a chamada revisada pelo professor."""
+    return storage.confirm_attendance(payload.present, payload.date)
+
+
 @app.post("/api/attendance/reset")
 async def reset_attendance(date: Optional[str] = None):
-    """Zera a chamada de uma data (padrão: hoje)."""
-    import json
-    from datetime import datetime
-
-    attendance = storage.load_attendance()
-    date = date or datetime.now().strftime("%Y-%m-%d")
-    if date in attendance:
-        attendance[date] = {}
-        with open(config.ATTENDANCE_DB, "w", encoding="utf-8") as f:
-            json.dump(attendance, f, ensure_ascii=False, indent=2)
-    return storage.attendance_for_date(date)
+    return storage.reset_attendance(date)
 
 
 @app.get("/api/health")
@@ -216,7 +278,7 @@ async def health():
 
 
 # ---------------------------------------------------------------------------
-# Frontend estático (deve ser montado por último para não capturar /api/*)
+# Frontend estático (montado por último para não capturar /api/*)
 # ---------------------------------------------------------------------------
 
 if config.FRONTEND_DIR.exists():

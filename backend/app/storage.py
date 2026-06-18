@@ -51,15 +51,21 @@ def save_students(students: List[dict]) -> None:
     _write_json(config.STUDENTS_DB, students)
 
 
-def add_student(name: str, photo_filename: str, embedding: List[float]) -> dict:
-    """Adiciona (ou atualiza) um aluno na base."""
+def add_student(name: str, photo_filename: str,
+                embeddings: List[List[float]]) -> dict:
+    """Adiciona (ou atualiza) um aluno na base.
+
+    ``embeddings`` é uma LISTA de vetores (um por foto capturada). Guardar
+    várias poses do rosto torna o reconhecimento muito mais robusto.
+    """
     with _lock:
         students = load_students()
-        # Se já existe um aluno com o mesmo nome, atualizamos a foto/embedding.
+        # Se já existe um aluno com o mesmo nome, atualizamos foto/embeddings.
         for student in students:
             if student["name"].lower() == name.lower():
                 student["photo"] = photo_filename
-                student["embedding"] = embedding
+                student["embeddings"] = embeddings
+                student["created_at"] = datetime.now().isoformat(timespec="seconds")
                 save_students(students)
                 return student
 
@@ -67,7 +73,7 @@ def add_student(name: str, photo_filename: str, embedding: List[float]) -> dict:
             "id": _next_id(students),
             "name": name,
             "photo": photo_filename,
-            "embedding": embedding,
+            "embeddings": embeddings,
             "created_at": datetime.now().isoformat(timespec="seconds"),
         }
         students.append(student)
@@ -101,17 +107,34 @@ def load_attendance() -> Dict[str, Dict[str, str]]:
     return _read_json(config.ATTENDANCE_DB, {})
 
 
-def mark_present(name: str, date: str | None = None) -> bool:
-    """Marca presença de um aluno. Retorna True se foi um NOVO registro."""
+def confirm_attendance(present_names: List[str],
+                       date: str | None = None) -> dict:
+    """Confirma (persiste) a chamada de uma data.
+
+    Sobrescreve o registro do dia com a lista revisada pelo professor. Os
+    alunos que já tinham horário registrado mantêm o horário; os novos
+    recebem o horário atual.
+    """
+    date = date or _today()
+    names = set(present_names)
+    with _lock:
+        attendance = load_attendance()
+        previous = attendance.get(date, {})
+        now = datetime.now().strftime("%H:%M:%S")
+        day = {name: previous.get(name, now) for name in names}
+        attendance[date] = day
+        _write_json(config.ATTENDANCE_DB, attendance)
+    return attendance_for_date(date)
+
+
+def reset_attendance(date: str | None = None) -> dict:
+    """Zera a chamada de uma data."""
     date = date or _today()
     with _lock:
         attendance = load_attendance()
-        day = attendance.setdefault(date, {})
-        if name in day:
-            return False
-        day[name] = datetime.now().strftime("%H:%M:%S")
+        attendance[date] = {}
         _write_json(config.ATTENDANCE_DB, attendance)
-        return True
+    return attendance_for_date(date)
 
 
 def attendance_for_date(date: str | None = None) -> dict:

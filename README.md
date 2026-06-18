@@ -1,28 +1,34 @@
-# 🎓 Chamada por Reconhecimento Facial
+# Chamada por Reconhecimento Facial
 
-Aplicação **web** para registro automático de presença (chamada) de alunos a
-partir da **webcam**. A detecção de rostos é feita com o classificador
-**Haarcascade (OpenCV)** e o reconhecimento facial com **DeepFace**.
+Aplicação **web** para registro de presença (chamada) de alunos a partir da
+**webcam**. A detecção de rostos é feita com o classificador **Haarcascade
+(OpenCV)** e o reconhecimento facial com **DeepFace**.
 
 > Trabalho de Visão Computacional — detecção + reconhecimento de faces aplicado
 > ao registro de presença em sala de aula.
 
 ---
 
-## ✨ Funcionalidades
+## Funcionalidades
 
-- **Cadastro de alunos** pelo navegador: upload de foto **ou** captura direta pela webcam.
-- **Detecção de rostos** com Haarcascade (OpenCV) no momento do cadastro e da chamada.
+- **Cadastro guiado em etapas (wizard):** informe o nome e capture **várias
+  fotos** do rosto (frente e laterais), com **guia oval de posicionamento** e
+  feedback em tempo real ("rosto bem posicionado").
+- **Múltiplas poses por aluno:** o sistema captura ~10 fotos em ângulos
+  diferentes e guarda um embedding de cada uma, tornando o reconhecimento bem
+  mais robusto.
+- **Detecção de rostos** com Haarcascade (OpenCV) tanto no cadastro quanto na chamada.
 - **Reconhecimento facial** com DeepFace (embeddings `Facenet512` + distância de cosseno).
-- **Chamada ao vivo**: feed de vídeo com caixas desenhadas sobre cada rosto
-  (verde = reconhecido, laranja = desconhecido).
-- **Modo automático**: o sistema captura frames periodicamente e marca presença sozinho.
-- **Lista de chamada** atualizada em tempo real, com horário de registro e total de presentes.
-- Persistência simples em arquivos JSON (sem necessidade de banco de dados).
+- **Chamada ao vivo:** vídeo com caixas desenhadas sobre cada rosto
+  (verde = reconhecido com a % de confiança, laranja = desconhecido).
+- **Revisão e confirmação:** o reconhecimento **não** salva presença sozinho.
+  O professor revisa a lista, **edita manualmente** quem está presente e só
+  então **confirma** a chamada.
+- **Persistência simples em arquivos JSON** (sem necessidade de banco de dados).
 
 ---
 
-## 🧱 Arquitetura
+## Arquitetura
 
 ```
 vc-trabalho-2/
@@ -37,35 +43,43 @@ vc-trabalho-2/
 │   └── requirements.txt
 └── frontend/                 # HTML/CSS/JS puro (sem build)
     ├── index.html            # página inicial
-    ├── cadastro.html         # cadastro de alunos
-    ├── chamada.html          # reconhecimento ao vivo / chamada
+    ├── cadastro.html         # wizard de cadastro de alunos
+    ├── chamada.html          # reconhecimento -> revisão -> confirmação
     ├── css/style.css
     └── js/{common,cadastro,chamada}.js
 ```
 
-### Fluxo do reconhecimento
+### Fluxo do cadastro
+1. **Etapa 1 (Dados):** informa o nome do aluno.
+2. **Etapa 2 (Captura):** a webcam liga, mostra um guia oval e conduz o aluno
+   por várias poses (frente, laterais, inclinações). Cada foto é capturada
+   automaticamente com contagem regressiva.
+3. **Etapa 3 (Revisão):** as fotos capturadas são exibidas; ao concluir, todas
+   são enviadas ao backend, que detecta o rosto em cada uma (Haarcascade),
+   extrai o embedding (DeepFace) e guarda os embeddings válidos.
 
-1. O navegador acessa a webcam via `getUserMedia` e captura um frame (`<canvas>` → JPEG base64).
-2. O frame é enviado ao backend (`POST /api/recognize`).
-3. O backend **detecta** os rostos com Haarcascade, **recorta** cada um e
-   extrai o **embedding** com DeepFace.
-4. Cada embedding é comparado (distância de cosseno) com os alunos cadastrados.
-   Abaixo do limiar → aluno reconhecido → presença registrada.
-5. O backend devolve as caixas detectadas + a lista de chamada atualizada, que o
-   frontend desenha sobre o vídeo e exibe na tabela.
+### Fluxo da chamada
+1. **Reconhecimento ao vivo:** o frontend captura frames da webcam e envia para
+   `POST /api/recognize`. O backend detecta os rostos (Haarcascade), extrai o
+   embedding (DeepFace) e compara (distância de cosseno) com os alunos. Os
+   reconhecidos vão se acumulando na sessão. **Nada é salvo ainda.**
+2. **Revisão:** lista de todos os alunos; os reconhecidos já vêm marcados como
+   presentes. O professor pode ajustar manualmente cada um.
+3. **Confirmação:** ao confirmar, `POST /api/attendance/confirm` persiste a
+   presença no JSON com o horário do registro.
 
 ---
 
-## 🚀 Instalação e Execução
+## Instalação e Execução
 
 ### Pré-requisitos
 - **Python 3.10, 3.11 ou 3.12** (testado em 3.11).
-  ⚠️ **Não use Python 3.13/3.14** — o TensorFlow (dependência do DeepFace)
-  ainda não tem suporte a essas versões e a instalação falha.
+  > **Não use Python 3.13/3.14** — o TensorFlow (dependência do DeepFace) ainda
+  > não tem suporte a essas versões e a instalação do numpy/tensorflow falha.
 - Uma **webcam**
 - Navegador moderno (Chrome, Edge ou Firefox)
 
-> ℹ️ A câmera só é liberada pelo navegador em **`localhost`** ou via **HTTPS**.
+> A câmera só é liberada pelo navegador em **`localhost`** ou via **HTTPS**.
 > Rodando localmente em `http://localhost:8000` funciona normalmente.
 
 ### 1. Clonar o repositório
@@ -74,92 +88,107 @@ git clone https://github.com/leopzz/vc-trabalho-2.git
 cd vc-trabalho-2
 ```
 
-### 2. Criar o ambiente virtual e instalar dependências
+### 2. Criar o ambiente virtual e instalar as dependências
+
+**Linux / macOS:**
 ```bash
-cd backend
-python -m venv .venv
-
-# Linux / macOS
+python3 -m venv .venv
 source .venv/bin/activate
-# Windows (PowerShell)
-# .venv\Scripts\Activate.ps1
-
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> ⚠️ A **primeira execução** do DeepFace baixa automaticamente os pesos do
-> modelo `Facenet512` (~90 MB). É necessário ter conexão com a internet nesse
-> primeiro uso; depois os modelos ficam em cache (`~/.deepface`).
+**Windows (PowerShell)** — garanta o Python 3.12 (`py -0` lista as versões):
+```powershell
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe --version          # deve mostrar 3.12.x
+.venv\Scripts\python.exe -m pip install --upgrade pip
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+> A **primeira chamada de reconhecimento** faz o DeepFace baixar os pesos do
+> modelo `Facenet512` (~90 MB), exigindo internet nesse momento. Depois fica em
+> cache (`~/.deepface`).
 
 ### 3. Iniciar o servidor
 ```bash
-# dentro de backend/, com o ambiente virtual ativo
+cd backend
 python run.py
 ```
-ou, equivalentemente:
+ou:
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+No Windows, sem ativar a venv, use o python dela diretamente:
+```powershell
+cd backend
+..\.venv\Scripts\python.exe run.py
+```
 
 ### 4. Abrir a aplicação
-Acesse no navegador: **http://localhost:8000**
-
-A documentação interativa da API (Swagger) fica em **http://localhost:8000/docs**.
-
----
-
-## 📋 Como usar
-
-1. **Cadastro** (`/cadastro.html`):
-   - Digite o nome do aluno.
-   - Faça o upload de uma foto **ou** clique em *Usar webcam* → *Capturar foto*.
-   - Clique em **Salvar cadastro**. Use fotos frontais e bem iluminadas.
-2. **Chamada** (`/chamada.html`):
-   - Clique em **Iniciar câmera** e permita o acesso à webcam.
-   - Use **Reconhecer agora** (manual) ou **Chamada automática** (a cada ~2,5 s).
-   - Os rostos reconhecidos ficam verdes e a presença é registrada na tabela.
-   - **Zerar chamada de hoje** limpa os registros do dia.
+- Aplicação: **http://localhost:8000**
+- Documentação da API (Swagger): **http://localhost:8000/docs**
 
 ---
 
-## 🔌 Endpoints da API
+## Como usar
 
-| Método | Rota                          | Descrição                                  |
-|--------|-------------------------------|--------------------------------------------|
-| POST   | `/api/students`               | Cadastra aluno (`name` + arquivo `photo`)  |
-| GET    | `/api/students`               | Lista alunos cadastrados                   |
-| GET    | `/api/students/{id}/photo`    | Retorna a foto recortada do aluno          |
-| DELETE | `/api/students/{id}`          | Remove um aluno                            |
-| POST   | `/api/recognize`              | Recebe um frame e faz detecção + chamada   |
-| GET    | `/api/attendance?date=YYYY-MM-DD` | Lista de chamada de uma data           |
-| POST   | `/api/attendance/reset`       | Zera a chamada de uma data (padrão: hoje)  |
-| GET    | `/api/health`                 | Status da API                              |
+1. **Cadastro** (aba *Cadastro*): digite o nome, clique em **Continuar**,
+   permita o acesso à câmera e siga as instruções de pose. Ao final, revise as
+   fotos e clique em **Concluir cadastro**. Repita para cada aluno.
+2. **Chamada** (aba *Chamada*): clique em **Iniciar câmera** e aponte para os
+   alunos — os reconhecidos aparecem na lista da sessão. Clique em **Revisar
+   chamada**, ajuste manualmente se necessário e clique em **Confirmar chamada**.
 
-Exemplo de corpo do `POST /api/recognize`:
-```json
-{ "image": "data:image/jpeg;base64,/9j/4AAQSk...", "date": "2026-06-18" }
+---
+
+## Endpoints da API
+
+| Método | Rota                              | Descrição                                       |
+|--------|-----------------------------------|-------------------------------------------------|
+| POST   | `/api/students`                   | Cadastra aluno (`name` + lista de `images`)     |
+| GET    | `/api/students`                   | Lista alunos cadastrados                        |
+| GET    | `/api/students/{id}/photo`        | Foto (miniatura) do aluno                       |
+| DELETE | `/api/students/{id}`              | Remove um aluno                                 |
+| POST   | `/api/detect`                     | Detecta rostos (guia de posicionamento)         |
+| POST   | `/api/recognize`                  | Reconhece rostos em um frame (não salva)        |
+| GET    | `/api/attendance?date=YYYY-MM-DD` | Lista de chamada de uma data                    |
+| POST   | `/api/attendance/confirm`         | Confirma e salva a chamada revisada             |
+| POST   | `/api/attendance/reset`           | Zera a chamada de uma data (padrão: hoje)       |
+| GET    | `/api/health`                     | Status da API                                   |
+
+Exemplos de corpo (JSON):
+```jsonc
+// POST /api/students
+{ "name": "Maria Silva", "images": ["data:image/jpeg;base64,...", "..."] }
+
+// POST /api/recognize
+{ "image": "data:image/jpeg;base64,...", "date": "2026-06-18" }
+
+// POST /api/attendance/confirm
+{ "present": ["Maria Silva", "João Souza"], "date": "2026-06-18" }
 ```
 
 ---
 
-## ⚙️ Ajustes finos
+## Ajustes finos
 
 Os parâmetros de visão computacional ficam em `backend/app/config.py`:
 
-| Parâmetro              | Padrão        | Descrição                                                 |
-|------------------------|---------------|-----------------------------------------------------------|
-| `DEEPFACE_MODEL`       | `Facenet512`  | Modelo de embeddings (ex.: `VGG-Face`, `ArcFace`).        |
-| `RECOGNITION_THRESHOLD`| `0.30`        | Limiar de distância. Menor = mais rígido (menos falsos +).|
-| `HAAR_SCALE_FACTOR`    | `1.1`         | Escala do Haarcascade.                                     |
-| `HAAR_MIN_NEIGHBORS`   | `6`           | Vizinhos mínimos (maior = menos detecções falsas).        |
+| Parâmetro               | Padrão       | Descrição                                                   |
+|-------------------------|--------------|-------------------------------------------------------------|
+| `DEEPFACE_MODEL`        | `Facenet512` | Modelo de embeddings (ex.: `VGG-Face`, `ArcFace`).          |
+| `RECOGNITION_THRESHOLD` | `0.30`       | Limiar de distância. Menor = mais rígido (menos falsos +).  |
+| `MIN_VALID_CAPTURES`    | `4`          | Mínimo de fotos com rosto detectado para concluir cadastro. |
+| `HAAR_SCALE_FACTOR`     | `1.1`        | Escala do Haarcascade.                                      |
+| `HAAR_MIN_NEIGHBORS`    | `6`          | Vizinhos mínimos (maior = menos detecções falsas).          |
 
-Se houver muitos "Desconhecido" para alunos já cadastrados, **aumente** o
-`RECOGNITION_THRESHOLD` (ex.: `0.35`). Se houver confusão entre alunos,
-**diminua** o limiar.
+Muitos "Desconhecido" para alunos já cadastrados? **Aumente** o
+`RECOGNITION_THRESHOLD` (ex.: `0.35`). Confusão entre alunos? **Diminua** o limiar.
 
 ---
 
-## 🧪 Tecnologias
+## Tecnologias
 
 - **Backend:** FastAPI, Uvicorn
 - **Visão Computacional:** OpenCV (Haarcascade), DeepFace (TensorFlow)
@@ -168,17 +197,17 @@ Se houver muitos "Desconhecido" para alunos já cadastrados, **aumente** o
 
 ---
 
-## 🎥 Demonstração
+## Demonstração
 
 > Vídeo demonstrativo (cadastro, acesso à webcam e realização da chamada):
 >
-> **[➡️ Link do vídeo no YouTube (não listado)](ADICIONAR_LINK_AQUI)**
+> **[Link do vídeo no YouTube (não listado)](ADICIONAR_LINK_AQUI)**
 
 ---
 
-## 📝 Observações
+## Observações
 
 - Os dados gerados em runtime (fotos, embeddings e presenças) ficam em
   `backend/data/` e **não** são versionados (ver `.gitignore`).
-- O projeto usa um banco JSON por simplicidade acadêmica; para produção,
-  recomenda-se um banco de dados real (SQLite/PostgreSQL).
+- O projeto usa um banco JSON por simplicidade; para produção, recomenda-se um
+  banco de dados real (SQLite/PostgreSQL).
