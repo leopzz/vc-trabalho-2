@@ -261,6 +261,12 @@ async def get_attendance(date: Optional[str] = None):
     return storage.attendance_for_date(date)
 
 
+@app.get("/api/attendance/dates")
+async def attendance_dates():
+    """Lista as datas que já tiveram chamada (para o histórico)."""
+    return storage.list_attendance_dates()
+
+
 @app.post("/api/attendance/confirm")
 async def confirm_attendance(payload: ConfirmPayload):
     """Persiste a chamada revisada pelo professor."""

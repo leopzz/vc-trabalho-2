@@ -4,6 +4,33 @@ const el = (id) => document.getElementById(id);
 const video = el("video");
 const overlay = el("overlay");
 const ctx = overlay.getContext("2d");
+const stage = el("stage");
+
+// Dimensões (em px de CSS) da área visível do vídeo. O canvas é desenhado
+// nessas coordenadas; um fator de devicePixelRatio mantém o traço nítido.
+let viewW = 0, viewH = 0;
+
+function sizeOverlay() {
+  const dpr = window.devicePixelRatio || 1;
+  viewW = stage.clientWidth;
+  viewH = stage.clientHeight;
+  overlay.width = Math.round(viewW * dpr);
+  overlay.height = Math.round(viewH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", sizeOverlay);
+
+function roundRectPath(x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); return; }
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
 
 let camStream = null;
 let recognizing = false;
@@ -40,8 +67,8 @@ el("camToggle").addEventListener("click", async () => {
     if (!students.length) await loadStudents();
     if (!students.length) { toast("Cadastre alunos antes de fazer a chamada.", "err"); return; }
     camStream = await startCamera(video);
-    overlay.width = video.videoWidth;
-    overlay.height = video.videoHeight;
+    sizeOverlay();
+    video.addEventListener("loadedmetadata", sizeOverlay, { once: true });
     el("camPlaceholder").hidden = true;
     el("camToggle").textContent = "Desligar câmera";
     setStatus(true, "Reconhecendo…");
@@ -72,10 +99,6 @@ async function recognitionLoop() {
 async function recognizeOnce() {
   busy = true;
   try {
-    if (video.videoWidth && overlay.width !== video.videoWidth) {
-      overlay.width = video.videoWidth;
-      overlay.height = video.videoHeight;
-    }
     const image = captureFrame(video, 0.85);
     const res = await postJSON("/api/recognize", { image, date: currentDate });
     drawDetections(res.detections);
@@ -92,28 +115,51 @@ async function recognizeOnce() {
   }
 }
 
-function clearOverlay() { ctx.clearRect(0, 0, overlay.width, overlay.height); }
+function clearOverlay() { if (viewW) ctx.clearRect(0, 0, viewW, viewH); }
 
 function drawDetections(detections) {
-  clearOverlay();
-  const lw = Math.max(2, overlay.width / 220);
-  ctx.lineWidth = lw;
-  ctx.font = `600 ${Math.max(14, overlay.width / 32)}px -apple-system, Segoe UI, sans-serif`;
-  ctx.textBaseline = "top";
+  if (!viewW) sizeOverlay();
+  ctx.clearRect(0, 0, viewW, viewH);
+
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;
+
+  // O vídeo é exibido com object-fit: cover. Calculamos a mesma escala e o
+  // recorte para que as caixas (em pixels do frame) caiam exatamente sobre os
+  // rostos exibidos — sem isso, as caixas ficam esticadas/gigantes.
+  const scale = Math.max(viewW / vw, viewH / vh);
+  const ox = (viewW - vw * scale) / 2;
+  const oy = (viewH - vh * scale) / 2;
+
+  ctx.lineWidth = 2.5;
+  ctx.font = '600 14px -apple-system, "Segoe UI", sans-serif';
+
   for (const d of detections) {
-    const { x, y, w, h } = d.box;
+    const x = ox + d.box.x * scale;
+    const y = oy + d.box.y * scale;
+    const w = d.box.w * scale;
+    const h = d.box.h * scale;
     const color = d.recognized ? "#22c55e" : "#f59e0b";
-    let label = d.recognized ? d.name : "Desconhecido";
-    if (d.recognized && d.confidence != null) label += `  ${Math.round(d.confidence * 100)}%`;
+
+    // Caixa fina com cantos arredondados.
     ctx.strokeStyle = color;
-    ctx.strokeRect(x, y, w, h);
-    const pad = 6;
+    roundRectPath(x, y, w, h, 10);
+    ctx.stroke();
+
+    // Rótulo compacto, acima da caixa (ou abaixo se não couber).
+    const label = d.recognized
+      ? (d.confidence != null ? `${d.name} · ${Math.round(d.confidence * 100)}%` : d.name)
+      : "Desconhecido";
+    const padX = 8, labelH = 22;
     const tw = ctx.measureText(label).width;
-    const th = parseInt(ctx.font, 10) + pad;
+    let ly = y - labelH - 5;
+    if (ly < 2) ly = y + h + 5;
     ctx.fillStyle = color;
-    ctx.fillRect(x - lw / 2, Math.max(y - th, 0), tw + pad * 2, th);
+    roundRectPath(x, ly, tw + padX * 2, labelH, 7);
+    ctx.fill();
     ctx.fillStyle = "#06210f";
-    ctx.fillText(label, x + pad, Math.max(y - th, 0) + pad / 2);
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x + padX, ly + labelH / 2 + 1);
   }
 }
 

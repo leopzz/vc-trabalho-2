@@ -137,8 +137,22 @@ def reset_attendance(date: str | None = None) -> dict:
     return attendance_for_date(date)
 
 
+def list_attendance_dates() -> List[dict]:
+    """Lista as datas que possuem chamada registrada (mais recentes primeiro).
+
+    Retorna ``[{"date": "2026-06-18", "present": 12}, ...]``.
+    """
+    attendance = load_attendance()
+    items = [{"date": d, "present": len(names)} for d, names in attendance.items()]
+    items.sort(key=lambda x: x["date"], reverse=True)
+    return items
+
+
 def attendance_for_date(date: str | None = None) -> dict:
     """Monta a lista de chamada de uma data, cruzando com todos os alunos.
+
+    Inclui também nomes que foram marcados presentes naquele dia mas que não
+    estão mais na turma (alunos removidos depois), para o histórico ficar fiel.
 
     Retorna algo como:
         {
@@ -154,11 +168,18 @@ def attendance_for_date(date: str | None = None) -> dict:
     day = load_attendance().get(date, {})
 
     rows = []
+    current_names = set()
     for student in sorted(students, key=lambda s: s["name"].lower()):
         name = student["name"]
+        current_names.add(name)
         rows.append({
             "name": name,
             "present": name in day,
             "time": day.get(name),
         })
+
+    # Presentes que não estão mais na turma atual.
+    for name in sorted(n for n in day if n not in current_names):
+        rows.append({"name": name, "present": True, "time": day.get(name)})
+
     return {"date": date, "students": rows}

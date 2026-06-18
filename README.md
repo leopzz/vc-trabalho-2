@@ -24,6 +24,8 @@ Aplicação **web** para registro de presença (chamada) de alunos a partir da
 - **Revisão e confirmação:** o reconhecimento **não** salva presença sozinho.
   O professor revisa a lista, **edita manualmente** quem está presente e só
   então **confirma** a chamada.
+- **Histórico de chamadas:** tela para consultar as chamadas anteriores
+  organizadas por dia, com presentes/ausentes e horários.
 - **Persistência simples em arquivos JSON** (sem necessidade de banco de dados).
 
 ---
@@ -45,8 +47,9 @@ vc-trabalho-2/
     ├── index.html            # página inicial
     ├── cadastro.html         # wizard de cadastro de alunos
     ├── chamada.html          # reconhecimento -> revisão -> confirmação
+    ├── historico.html        # histórico de chamadas por dia
     ├── css/style.css
-    └── js/{common,cadastro,chamada}.js
+    └── js/{common,cadastro,chamada,historico}.js
 ```
 
 ### Fluxo do cadastro
@@ -139,6 +142,8 @@ cd backend
 2. **Chamada** (aba *Chamada*): clique em **Iniciar câmera** e aponte para os
    alunos — os reconhecidos aparecem na lista da sessão. Clique em **Revisar
    chamada**, ajuste manualmente se necessário e clique em **Confirmar chamada**.
+3. **Histórico** (aba *Histórico*): consulte as chamadas anteriores por dia,
+   com presentes, ausentes e horários.
 
 ---
 
@@ -153,6 +158,7 @@ cd backend
 | POST   | `/api/detect`                     | Detecta rostos (guia de posicionamento)         |
 | POST   | `/api/recognize`                  | Reconhece rostos em um frame (não salva)        |
 | GET    | `/api/attendance?date=YYYY-MM-DD` | Lista de chamada de uma data                    |
+| GET    | `/api/attendance/dates`           | Datas que já tiveram chamada (histórico)        |
 | POST   | `/api/attendance/confirm`         | Confirma e salva a chamada revisada             |
 | POST   | `/api/attendance/reset`           | Zera a chamada de uma data (padrão: hoje)       |
 | GET    | `/api/health`                     | Status da API                                   |

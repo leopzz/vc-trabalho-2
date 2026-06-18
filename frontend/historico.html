@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Histórico — Chamada Facial</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6"/></svg>
+      </span>
+      <span>Chamada Facial<small>Reconhecimento facial para presença</small></span>
+    </div>
+    <nav class="nav">
+      <a href="index.html">Início</a>
+      <a href="cadastro.html">Cadastro</a>
+      <a href="chamada.html">Chamada</a>
+      <a href="historico.html" class="active">Histórico</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="page-head">
+      <h1>Histórico de chamadas</h1>
+      <p>Consulte as chamadas já realizadas, organizadas por dia.</p>
+    </div>
+
+    <div class="grid-2">
+      <!-- Lista de dias -->
+      <div class="card">
+        <h2>Dias com chamada</h2>
+        <p class="sub">Selecione uma data para ver os detalhes.</p>
+        <div id="daysList"><div class="empty">Carregando…</div></div>
+      </div>
+
+      <!-- Detalhe do dia -->
+      <div class="card">
+        <div class="row between" style="flex-wrap:wrap;gap:10px;">
+          <h2 style="margin:0;" id="detailTitle">Detalhes</h2>
+          <button class="btn btn-soft-danger" id="resetDay" hidden type="button">Zerar este dia</button>
+        </div>
+        <div id="detail">
+          <div class="empty">Selecione um dia na lista ao lado.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/common.js"></script>
+  <script src="js/historico.js"></script>
+</body>
+</html>
