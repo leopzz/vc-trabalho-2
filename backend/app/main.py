@@ -121,11 +121,10 @@ async def create_student(payload: EnrollPayload):
             ),
         )
 
-    safe_name = "".join(c if c.isalnum() else "_" for c in name).strip("_").lower()
-    filename = f"{safe_name or 'aluno'}.jpg"
-    imaging.save_jpeg(thumbnail, config.STUDENTS_DIR / filename)
-
-    student = storage.add_student(name, filename, embeddings)
+    # Cria o registro primeiro para obter um id único; a foto é salva com um
+    # nome derivado desse id, evitando que cadastros diferentes colidam.
+    student = storage.add_student(name, embeddings)
+    imaging.save_jpeg(thumbnail, config.STUDENTS_DIR / student["photo"])
     return {
         "id": student["id"],
         "name": student["name"],

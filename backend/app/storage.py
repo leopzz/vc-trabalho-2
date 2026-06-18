@@ -51,28 +51,24 @@ def save_students(students: List[dict]) -> None:
     _write_json(config.STUDENTS_DB, students)
 
 
-def add_student(name: str, photo_filename: str,
-                embeddings: List[List[float]]) -> dict:
-    """Adiciona (ou atualiza) um aluno na base.
+def add_student(name: str, embeddings: List[List[float]]) -> dict:
+    """Adiciona um NOVO aluno à base e retorna o registro criado.
 
     ``embeddings`` é uma LISTA de vetores (um por foto capturada). Guardar
     várias poses do rosto torna o reconhecimento muito mais robusto.
+
+    Cada cadastro gera sempre um registro distinto (com id próprio), de modo
+    que cadastrar uma nova pessoa nunca sobrescreve as já existentes — mesmo
+    que dois alunos tenham o mesmo nome. O nome do arquivo da foto é derivado
+    do id, garantindo que as miniaturas também nunca colidam entre si.
     """
     with _lock:
         students = load_students()
-        # Se já existe um aluno com o mesmo nome, atualizamos foto/embeddings.
-        for student in students:
-            if student["name"].lower() == name.lower():
-                student["photo"] = photo_filename
-                student["embeddings"] = embeddings
-                student["created_at"] = datetime.now().isoformat(timespec="seconds")
-                save_students(students)
-                return student
-
+        student_id = _next_id(students)
         student = {
-            "id": _next_id(students),
+            "id": student_id,
             "name": name,
-            "photo": photo_filename,
+            "photo": f"student_{student_id}.jpg",
             "embeddings": embeddings,
             "created_at": datetime.now().isoformat(timespec="seconds"),
         }
@@ -84,10 +80,18 @@ def add_student(name: str, photo_filename: str,
 def delete_student(student_id: int) -> bool:
     with _lock:
         students = load_students()
-        new_students = [s for s in students if s["id"] != student_id]
-        if len(new_students) == len(students):
+        removed = next((s for s in students if s["id"] == student_id), None)
+        if removed is None:
             return False
+        new_students = [s for s in students if s["id"] != student_id]
         save_students(new_students)
+        # Remove também a miniatura do aluno para não deixar arquivos órfãos.
+        if removed.get("photo"):
+            photo_path = config.STUDENTS_DIR / removed["photo"]
+            try:
+                photo_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         return True
 
 

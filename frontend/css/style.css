@@ -171,6 +171,11 @@ a { color: inherit; text-decoration: none; }
 .stage video, .stage canvas {
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
 }
+/* Espelha apenas o PREVIEW da câmera (efeito selfie) para o usuário se guiar
+   com naturalidade ao se posicionar. A foto capturada usa o frame bruto do
+   <video> (via canvas), que NÃO é afetado por esta transformação, mantendo as
+   imagens salvas sem espelhamento — como o reconhecimento espera. */
+.stage video.mirror { transform: scaleX(-1); }
 .stage canvas { pointer-events: none; }
 .stage .placeholder {
   position: absolute; inset: 0; display: grid; place-items: center; color: #94a3b8;
