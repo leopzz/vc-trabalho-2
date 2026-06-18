@@ -1,0 +1,3 @@
+# Dependências do projeto (mesma lista de backend/requirements.txt).
+# Permite instalar a partir da raiz com: pip install -r requirements.txt
+-r backend/requirements.txt
