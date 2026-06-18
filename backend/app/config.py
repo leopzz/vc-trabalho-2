@@ -40,9 +40,9 @@ HAAR_MIN_NEIGHBORS = 6
 HAAR_MIN_SIZE = (60, 60)
 
 # Cadastro: número mínimo de fotos válidas (rosto detectado) exigido para
-# concluir o cadastro de um aluno. O wizard captura ~10 fotos em poses
-# diferentes; algumas podem falhar na detecção e tudo bem.
-MIN_VALID_CAPTURES = 4
+# concluir o cadastro. Basta 1 para funcionar (vale tanto para o upload de uma
+# única foto quanto para a captura guiada pela webcam, que gera ~10 poses).
+MIN_VALID_CAPTURES = 1
 
 
 

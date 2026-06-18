@@ -115,9 +115,9 @@ async def create_student(payload: EnrollPayload):
         raise HTTPException(
             status_code=422,
             detail=(
-                f"Detectamos rosto em apenas {len(embeddings)} foto(s) "
-                f"(mínimo {config.MIN_VALID_CAPTURES}). Refaça a captura com "
-                "boa iluminação e o rosto dentro do guia."
+                "Nenhum rosto foi detectado nas fotos enviadas. Use fotos "
+                "nítidas, frontais e bem iluminadas (ou refaça a captura com o "
+                "rosto dentro do guia)."
             ),
         )
 

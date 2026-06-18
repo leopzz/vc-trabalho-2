@@ -11,9 +11,9 @@ Aplicação **web** para registro de presença (chamada) de alunos a partir da
 
 ## Funcionalidades
 
-- **Cadastro guiado em etapas (wizard):** informe o nome e capture **várias
-  fotos** do rosto (frente e laterais), com **guia oval de posicionamento** e
-  feedback em tempo real ("rosto bem posicionado").
+- **Cadastro guiado em etapas (wizard):** informe o nome e **capture várias
+  fotos** pela webcam (frente e laterais), com **guia oval de posicionamento** e
+  feedback em tempo real, **ou faça o upload** de fotos do aluno.
 - **Múltiplas poses por aluno:** o sistema captura ~10 fotos em ângulos
   diferentes e guarda um embedding de cada uma, tornando o reconhecimento bem
   mais robusto.
@@ -54,9 +54,11 @@ vc-trabalho-2/
 
 ### Fluxo do cadastro
 1. **Etapa 1 (Dados):** informa o nome do aluno.
-2. **Etapa 2 (Captura):** a webcam liga, mostra um guia oval e conduz o aluno
-   por várias poses (frente, laterais, inclinações). Cada foto é capturada
-   automaticamente com contagem regressiva.
+2. **Etapa 2 (Captura):** dois modos disponíveis —
+   - **Webcam:** liga a câmera, mostra um guia oval e conduz o aluno por
+     várias poses (frente, laterais, inclinações), capturando automaticamente
+     com contagem regressiva; **ou**
+   - **Upload:** seleção (ou arrastar-e-soltar) de uma ou mais fotos do aluno.
 3. **Etapa 3 (Revisão):** as fotos capturadas são exibidas; ao concluir, todas
    são enviadas ao backend, que detecta o rosto em cada uma (Haarcascade),
    extrai o embedding (DeepFace) e guarda os embeddings válidos.
@@ -136,9 +138,10 @@ cd backend
 
 ## Como usar
 
-1. **Cadastro** (aba *Cadastro*): digite o nome, clique em **Continuar**,
-   permita o acesso à câmera e siga as instruções de pose. Ao final, revise as
-   fotos e clique em **Concluir cadastro**. Repita para cada aluno.
+1. **Cadastro** (aba *Cadastro*): digite o nome, clique em **Continuar** e
+   escolha **Capturar pela webcam** (siga as instruções de pose) ou **Enviar
+   fotos** (upload). Ao final, revise as fotos e clique em **Concluir
+   cadastro**. Repita para cada aluno.
 2. **Chamada** (aba *Chamada*): clique em **Iniciar câmera** e aponte para os
    alunos — os reconhecidos aparecem na lista da sessão. Clique em **Revisar
    chamada**, ajuste manualmente se necessário e clique em **Confirmar chamada**.

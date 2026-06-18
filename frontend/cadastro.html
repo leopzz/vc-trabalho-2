@@ -52,7 +52,13 @@
 
       <!-- ETAPA 2: captura -->
       <section id="s2" hidden>
-        <div class="grid-2">
+        <div class="segment" id="modeSwitch">
+          <button class="seg active" data-mode="webcam" type="button">Capturar pela webcam</button>
+          <button class="seg" data-mode="upload" type="button">Enviar fotos</button>
+        </div>
+
+        <!-- Modo webcam -->
+        <div id="webcamMode" class="grid-2">
           <div>
             <div class="stage" id="stage">
               <video id="video" autoplay playsinline muted></video>
@@ -76,12 +82,29 @@
             </div>
           </div>
         </div>
+
+        <!-- Modo upload -->
+        <div id="uploadMode" hidden>
+          <h2>Enviar fotos</h2>
+          <p class="sub">Selecione uma ou mais fotos do rosto do aluno (frente e, se possível, ângulos diferentes). Use fotos nítidas e bem iluminadas.</p>
+          <div class="uploadbox" id="uploadbox">
+            <input type="file" id="fileInput" accept="image/*" multiple hidden />
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+            <p>Clique para escolher as fotos ou arraste-as aqui.</p>
+            <button class="btn btn-ghost" id="pickFiles" type="button">Escolher arquivos</button>
+          </div>
+          <div class="thumbs" id="uploadThumbs" style="margin-top:16px;"></div>
+          <div class="actions" style="margin-top:18px;">
+            <button class="btn btn-ghost" id="backTo1b" type="button">Voltar</button>
+            <button class="btn" id="uploadContinue" type="button" disabled>Continuar para revisão</button>
+          </div>
+        </div>
       </section>
 
       <!-- ETAPA 3: revisão -->
       <section id="s3" hidden>
         <h2>Revisar e concluir</h2>
-        <p class="sub">Conferindo o cadastro de <strong id="reviewName"></strong> — <span id="reviewCount">0</span> fotos capturadas.</p>
+        <p class="sub">Conferindo o cadastro de <strong id="reviewName"></strong> — <span id="reviewCount">0</span> foto(s).</p>
         <div class="thumbs" id="thumbs"></div>
         <div class="actions" style="margin-top:20px;">
           <button class="btn btn-ghost" id="redo">Refazer captura</button>

@@ -34,10 +34,12 @@ const startBtn = el("startCapture");
 
 // ---- estado -----------------------------------------------------------
 let camStream = null;
-let captures = [];        // Data URLs capturadas
+let captures = [];        // Data URLs que serão enviadas (webcam ou upload)
+let uploadCaptures = [];  // Data URLs escolhidas no modo upload
 let capturing = false;    // sequência de captura em andamento
 let idleLoop = false;     // loop de detecção ocioso ativo
 let studentName = "";
+let mode = "webcam";      // "webcam" | "upload"
 
 // ---- navegação entre etapas ------------------------------------------
 function goStep(n) {
@@ -57,10 +59,88 @@ el("toStep2").addEventListener("click", async () => {
   studentName = nameInput.value.trim();
   if (!studentName) { toast("Informe o nome do aluno.", "err"); nameInput.focus(); return; }
   goStep(2);
-  await enterCaptureStep();
+  await setMode("webcam");
 });
 
 el("backTo1").addEventListener("click", () => { leaveCaptureStep(); goStep(1); });
+el("backTo1b").addEventListener("click", () => { leaveCaptureStep(); goStep(1); });
+
+// ---- alternância webcam / upload -------------------------------------
+document.querySelectorAll("#modeSwitch .seg").forEach((btn) =>
+  btn.addEventListener("click", () => setMode(btn.dataset.mode)));
+
+async function setMode(m) {
+  mode = m;
+  document.querySelectorAll("#modeSwitch .seg").forEach((b) =>
+    b.classList.toggle("active", b.dataset.mode === m));
+  el("webcamMode").hidden = m !== "webcam";
+  el("uploadMode").hidden = m !== "upload";
+  if (m === "webcam") {
+    resetUpload();
+    await enterCaptureStep();
+  } else {
+    leaveCaptureStep();
+    resetUpload();
+  }
+}
+
+// ---- modo upload ------------------------------------------------------
+const fileInput = el("fileInput");
+const uploadbox = el("uploadbox");
+
+el("pickFiles").addEventListener("click", (e) => { e.stopPropagation(); fileInput.click(); });
+uploadbox.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => handleFiles(fileInput.files));
+
+["dragenter", "dragover"].forEach((ev) =>
+  uploadbox.addEventListener(ev, (e) => { e.preventDefault(); uploadbox.classList.add("drag"); }));
+["dragleave", "drop"].forEach((ev) =>
+  uploadbox.addEventListener(ev, (e) => { e.preventDefault(); uploadbox.classList.remove("drag"); }));
+uploadbox.addEventListener("drop", (e) => handleFiles(e.dataTransfer.files));
+
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+async function handleFiles(fileList) {
+  const files = [...fileList].filter((f) => f.type.startsWith("image/"));
+  for (const f of files) {
+    try { uploadCaptures.push(await readFileAsDataURL(f)); } catch (_) {}
+  }
+  renderUploadThumbs();
+}
+
+function renderUploadThumbs() {
+  const box = el("uploadThumbs");
+  box.innerHTML = "";
+  uploadCaptures.forEach((src, i) => {
+    const div = document.createElement("div");
+    div.className = "thumb";
+    div.innerHTML = `<img src="${src}" alt="foto" />`;
+    div.title = "Clique para remover";
+    div.style.cursor = "pointer";
+    div.addEventListener("click", () => { uploadCaptures.splice(i, 1); renderUploadThumbs(); });
+    box.appendChild(div);
+  });
+  el("uploadContinue").disabled = uploadCaptures.length === 0;
+}
+
+function resetUpload() {
+  uploadCaptures = [];
+  fileInput.value = "";
+  renderUploadThumbs();
+}
+
+el("uploadContinue").addEventListener("click", () => {
+  if (!uploadCaptures.length) { toast("Selecione ao menos uma foto.", "err"); return; }
+  captures = uploadCaptures.slice();
+  goReview();
+});
 
 // ---- ETAPA 2: câmera + detecção ao vivo ------------------------------
 async function enterCaptureStep() {
@@ -212,8 +292,7 @@ function goReview() {
 
 el("redo").addEventListener("click", async () => {
   goStep(2);
-  resetCapture();
-  if (!camStream) await enterCaptureStep();
+  await setMode(mode);
 });
 
 el("finish").addEventListener("click", async () => {
